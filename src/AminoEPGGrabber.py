@@ -1,4 +1,4 @@
-#/usr/sbin/env python
+#/usr/bin/env python
 
 """
 A XMLTV compatible EPG grabber for the Amino EPG.
