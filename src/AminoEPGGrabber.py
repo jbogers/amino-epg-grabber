@@ -263,26 +263,48 @@ class AminoEPGGrabber(object):
         
         detailEpg = json.load(detailData, "UTF-8")
         
+        # Episode title
         if len(detailEpg["episodeTitle"]) > 0:
             program["sub-title"] = detailEpg["episodeTitle"]
             
+        # Detailed description
         if len(detailEpg["description"]) > 0:
             program["desc"] = detailEpg["description"]
             
-        if len(detailEpg["actors"]) > 0:
-            program["actors"] = []
+        # Credits
+        program["credits"] = dict()
+
+        if detailEpg.has_key("actors") and len(detailEpg["actors"]) > 0:
+            program["credits"]["actor"] = []
             for actor in detailEpg["actors"]:
-                program["actors"].append(actor)
+                program["credits"]["actor"].append(actor)
                 
-        if len(detailEpg["directors"]) > 0:
-            program["directors"] = []
+        if detailEpg.has_key("directors") and len(detailEpg["directors"]) > 0:
+            program["credits"]["director"] = []
             for director in detailEpg["directors"]:
-                program["directors"].append(director)
-            
+                program["credits"]["director"].append(director)
+                
+        if detailEpg.has_key("presenters") and len(detailEpg["presenters"]) > 0:
+            program["credits"]["presenter"] = []
+            for presenter in detailEpg["presenters"]:
+                program["credits"]["presenter"].append(presenter)
+                
+        if detailEpg.has_key("commentators") and len(detailEpg["commentators"]) > 0:
+            program["credits"]["commentator"] = []
+            for presenter in detailEpg["commentators"]:
+                program["credits"]["commentator"].append(presenter)
+                
+        # Genres
         if len(detailEpg["genres"]) > 0:
             program["categories"] = []
             for genre in detailEpg["genres"]:
                 program["categories"].append(genre)
+                
+        # Aspect ratio
+        if detailEpg.has_key("aspectratio") and len(detailEpg["aspectratio"]) > 0:
+            program["aspect"] = detailEpg["aspectratio"]
+        
+        # TODO: NICAM ratings (nicamParentalRating and nicamWarning)
                 
     def _addProgramToXML(self, channel, program, xmltag):
         """Add program to XML tree under the specified tag"""
@@ -318,23 +340,25 @@ class AminoEPGGrabber(object):
             descriptionTag.appendChild(descriptionTagText)
             programmeTag.appendChild(descriptionTag)
             
-        # Credits (actors & directors)
-        if program.has_key("actors") or program.has_key("directors"):
+        # Credits (directors, actors, etc)
+        if program.has_key("credits") and len(program["credits"]) > 0:
             # Add credits tag
             creditsTag = self._xmltv.createElement("credits")
-            if program.has_key("actors"):
-                for actor in program["actors"]:
-                    actorTag = self._xmltv.createElement("actor")
-                    actorTagText = self._xmltv.createTextNode(actor)
-                    actorTag.appendChild(actorTagText)
-                    creditsTag.appendChild(actorTag)
-                    
-            if program.has_key("directors"):
-                for director in program["directors"]:
-                    directorTag = self._xmltv.createElement("director")
-                    directorTagText = self._xmltv.createTextNode(director)
-                    directorTag.appendChild(directorTagText)
-                    creditsTag.appendChild(directorTag)
+            
+            # Add tags for each type of credits (in order, so XMLTV stays happy)
+            #creditTypes = ["director", "actor", "writer", "adapter",
+            #               "producer", "composer", "editor", "presenter",
+            #               "commentator", "guest"]
+            creditTypes = ["director", "actor", "presenter", "commentator"]
+            creditsDict = program["credits"]
+            
+            for creditType in creditTypes:
+                if creditsDict.has_key(creditType):
+                    for person in creditsDict[creditType]:
+                        personTag = self._xmltv.createElement(creditType)
+                        personTagText = self._xmltv.createTextNode(person)
+                        personTag.appendChild(personTagText)
+                        creditsTag.appendChild(personTag)
                     
             programmeTag.appendChild(creditsTag)
             
@@ -347,6 +371,14 @@ class AminoEPGGrabber(object):
                 categoryTagText = self._xmltv.createTextNode(category)
                 categoryTag.appendChild(categoryTagText)
                 programmeTag.appendChild(categoryTag)
+                
+        # Aspect ratio
+        if program.has_key("aspect"):
+            # Add aspect tag
+            aspectTag = self._xmltv.createElement("aspect")
+            aspectTagText = self._xmltv.createTextNode(program["aspect"])
+            aspectTag.appendChild(aspectTagText)
+            programmeTag.appendChild(aspectTag)
     
     def _convertTimestamp(self, timestamp):
         """Convert downloaded timestamp to XMLTV compatible time string"""
