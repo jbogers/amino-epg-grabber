@@ -129,7 +129,7 @@ class AminoEPGGrabber(object):
         If an existing database file was loaded, that data will be updated.
         """
         for grabDay in range(self.maxDays):
-            for dayPart in range(0, 3):
+            for dayPart in range(0, 8):
                 grabDate = date.today() + timedelta(days=grabDay)
                 print "Grabbing", str(grabDate), "part", dayPart,
                 print "(day " + str(grabDay+1) + "/" + str(self.maxDays) + ")"
