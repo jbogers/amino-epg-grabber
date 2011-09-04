@@ -399,8 +399,8 @@ def main():
     # Override defaults
     # Override the EPG server location if you are in a different
     # network, or when you need to use a direct IP address.
-    #grabber.epgServer = "w1.zt6.nl"
-    grabber.epgServer = "192.168.0.101:8080"
+    grabber.epgServer = "w1.zt6.nl"
+    #grabber.epgServer = "192.168.0.101:8080"
     
     # By default the grabber will grab 7 days, which is the usual
     # maximum of days that are offered, so make sure you only
