@@ -152,6 +152,10 @@ class AminoEPGGrabber(object):
                 rawData = gzip.GzipFile(fileobj=compressedStream).read()
                 basicEpg = json.loads(rawData, "UTF-8")
                 
+                # Close stream and connection
+                compressedStream.close()
+                epgData.close()
+                
                 # Process basic EPG
                 self._processBasicEPG(basicEpg)
         return True # Return with success
@@ -262,6 +266,9 @@ class AminoEPGGrabber(object):
             return # No data can be downloaded, return
         
         detailEpg = json.load(detailData, "UTF-8")
+        
+        # Close connection
+        detailData.close()
         
         # Episode title
         if len(detailEpg["episodeTitle"]) > 0:
@@ -400,7 +407,7 @@ def main():
     # Override the EPG server location if you are in a different
     # network, or when you need to use a direct IP address.
     grabber.epgServer = "w1.zt6.nl"
-    #grabber.epgServer = "192.168.0.101:8080"
+    #grabber.epgServer = "192.168.0.102:8080"
     
     # By default the grabber will grab 7 days, which is the usual
     # maximum of days that are offered, so make sure you only
