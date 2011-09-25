@@ -21,13 +21,15 @@ OnsBrabantNet
 from datetime import datetime, date, timedelta
 from xml.dom.minidom import Document
 import pytz
-import urllib2
+import httplib
+import socket
 import StringIO
 import gzip
 import json
 import cPickle
 import os
 import re
+import time
 
 #===============================================================================
 # The internal data struture used in the AminoEPGGrabber to
@@ -63,6 +65,7 @@ class AminoEPGGrabber(object):
         self._timezone = pytz.timezone("Europe/Amsterdam")
         self._epgdata = dict()
         self._xmltv = None
+        self._epgConnection = None
         
     #===============================================================================
     # Getters and setters
@@ -128,36 +131,57 @@ class AminoEPGGrabber(object):
         This function will grab the EPG data from the EPG server.
         If an existing database file was loaded, that data will be updated.
         """
+        # Grab EPG data for all days
         for grabDay in range(self.maxDays):
             for dayPart in range(0, 8):
                 grabDate = date.today() + timedelta(days=grabDay)
                 print "Grabbing", str(grabDate), "part", dayPart,
                 print "(day " + str(grabDay+1) + "/" + str(self.maxDays) + ")"
-            
-                # Get basic EPG
-                fileId = grabDate.strftime("%Y%m%d.") + str(dayPart)
-                url = "http://" + self.epgServer + "/epgdata/epgdata." + fileId + ".json.gz"
+                
                 try:
-                    epgData = urllib2.urlopen(url)
-                except urllib2.HTTPError, error:
-                    print "HTTP Error", error.code, "(failed on fileid", fileId + ")"
-                    break # break loop, no more days
-                except urllib2.URLError, error:
-                    print "Failed to download '" + fileId + "'"
-                    print "The error was:", error.reason
-                    return False # Return with error
+                    # Set up new connection to EPG server
+                    self._epgConnection = httplib.HTTPConnection(self.epgServer)
+            
+                    # Get basic EPG
+                    fileId = grabDate.strftime("%Y%m%d.") + str(dayPart)
+                    requestUrl = "/epgdata/epgdata." + fileId + ".json.gz"
+                    
+                    try:
+                        self._epgConnection.request("GET", requestUrl)
+                        response = self._epgConnection.getresponse()
+                        epgData = response.read()
+                        
+                        if response.status != 200:
+                            print "HTTP Error %s (%s). Failed on fileid %s." % (response.status,
+                                                                                response.reason,
+                                                                                fileId)
+                            break # break loop, no more days
+                        
+                    except socket.error, error:
+                        print "Failed to download '" + fileId + "'"
+                        print "The error was:", error
+                        return False # Return with error
+                    except httplib.CannotSendRequest, error:
+                        print "Error occurred on HTTP connection. Connection lost before sending request."
+                        print "The error was:", error
+                        return False # Return with error
+                    
+                    # Decompress and retrieve data
+                    compressedStream = StringIO.StringIO(epgData)
+                    rawData = gzip.GzipFile(fileobj=compressedStream).read()
+                    basicEpg = json.loads(rawData, "UTF-8")
+                    
+                    # Close StringIO
+                    compressedStream.close()
+                    
+                    # Process basic EPG
+                    self._processBasicEPG(basicEpg)
                 
-                # Decompress and retrieve data
-                compressedStream = StringIO.StringIO(epgData.read())
-                rawData = gzip.GzipFile(fileobj=compressedStream).read()
-                basicEpg = json.loads(rawData, "UTF-8")
+                finally:
+                    # Make sure connection gets closed
+                    self._epgConnection.close()
+                    self._epgConnection = None
                 
-                # Close stream and connection
-                compressedStream.close()
-                epgData.close()
-                
-                # Process basic EPG
-                self._processBasicEPG(basicEpg)
         return True # Return with success
                 
     def writeXmltv(self):
@@ -256,19 +280,35 @@ class AminoEPGGrabber(object):
         
         # Generate details URL 
         programIdGroup = programId[-2:]
-        detailUrl = "http://" + self.epgServer + "/epgdata/"
-        detailUrl += programIdGroup + "/" + programId + ".json"
+        detailUrl = "/epgdata/" + programIdGroup + "/" + programId + ".json"
 
         # Try to download file
         try:
-            detailData = urllib2.urlopen(detailUrl)
-        except urllib2.HTTPError:
-            return # No data can be downloaded, return
+            self._epgConnection.request("GET", detailUrl)
+            response = self._epgConnection.getresponse()
+            if response.status != 200:
+                return # No data can be downloaded, return
+            
+        except (socket.error, httplib.CannotSendRequest):
+            # Error in connection. Close existing connection.
+            self._epgConnection.close()
+            
+            # Wait for network to recover
+            time.sleep(10)
+            
+            # Reconnect to server and retry
+            try:
+                self._epgConnection = httplib.HTTPConnection(self.epgServer)
+                self._epgConnection.request("GET", detailUrl)
+                response = self._epgConnection.getresponse()
+                if response.status != 200:
+                    return # No data can be downloaded, return
+                
+            except (socket.error, httplib.CannotSendRequest):
+                # Connection remains broken, return (error will be handled in grabEpg function)
+                return
         
-        detailEpg = json.load(detailData, "UTF-8")
-        
-        # Close connection
-        detailData.close()
+        detailEpg = json.load(response, "UTF-8")
         
         # Episode title
         if len(detailEpg["episodeTitle"]) > 0:
