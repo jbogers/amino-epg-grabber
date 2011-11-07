@@ -165,6 +165,10 @@ class AminoEPGGrabber(object):
                         print "Error occurred on HTTP connection. Connection lost before sending request."
                         print "The error was:", error
                         return False # Return with error
+                    except httplib.BadStatusLine, error:
+                        print "Error occurred on HTTP connection. Bad status line returned."
+                        print "The error was:", error
+                        return False # Return with error
                     
                     # Decompress and retrieve data
                     compressedStream = StringIO.StringIO(epgData)
@@ -247,12 +251,17 @@ class AminoEPGGrabber(object):
             # Store all program data
             for grabbedProgram in grabbedPrograms:
                 # Convert to internal structure
-                programId = grabbedProgram["id"]
-                program = dict()
-                program["grabbed"] = True
-                program["starttime"] = self._convertTimestamp(grabbedProgram["start"])
-                program["stoptime"] = self._convertTimestamp(grabbedProgram["end"])
-                program["title"] = grabbedProgram["name"]
+                try:
+                    programId = grabbedProgram["id"]
+                    program = dict()
+                    program["grabbed"] = True
+                    program["starttime"] = self._convertTimestamp(grabbedProgram["start"])
+                    program["stoptime"] = self._convertTimestamp(grabbedProgram["end"])
+                    program["title"] = grabbedProgram["name"]
+                except KeyError:
+                    # Program with incomplete data (most likely missing 'name').
+                    # Cannot create valid XMLTV entry, so skip (data will be updated on a next run when it is available)
+                    continue
                 
                 # Add every program to the internal data structure
                 if self._epgdata[channel].has_key(programId):
@@ -281,7 +290,7 @@ class AminoEPGGrabber(object):
         # Generate details URL 
         programIdGroup = programId[-2:]
         detailUrl = "/epgdata/" + programIdGroup + "/" + programId + ".json"
-
+        
         # Try to download file
         try:
             self._epgConnection.request("GET", detailUrl)
@@ -289,7 +298,7 @@ class AminoEPGGrabber(object):
             if response.status != 200:
                 return # No data can be downloaded, return
             
-        except (socket.error, httplib.CannotSendRequest):
+        except (socket.error, httplib.CannotSendRequest, httplib.BadStatusLine):
             # Error in connection. Close existing connection.
             self._epgConnection.close()
             
@@ -304,18 +313,18 @@ class AminoEPGGrabber(object):
                 if response.status != 200:
                     return # No data can be downloaded, return
                 
-            except (socket.error, httplib.CannotSendRequest):
+            except (socket.error, httplib.CannotSendRequest, httplib.BadStatusLine):
                 # Connection remains broken, return (error will be handled in grabEpg function)
                 return
         
         detailEpg = json.load(response, "UTF-8")
         
         # Episode title
-        if len(detailEpg["episodeTitle"]) > 0:
+        if detailEpg.has_key("episodeTitle") and len(detailEpg["episodeTitle"]) > 0:
             program["sub-title"] = detailEpg["episodeTitle"]
             
         # Detailed description
-        if len(detailEpg["description"]) > 0:
+        if detailEpg.has_key("description") and len(detailEpg["description"]) > 0:
             program["desc"] = detailEpg["description"]
             
         # Credits
@@ -342,7 +351,7 @@ class AminoEPGGrabber(object):
                 program["credits"]["commentator"].append(presenter)
                 
         # Genres
-        if len(detailEpg["genres"]) > 0:
+        if detailEpg.has_key("genres") and len(detailEpg["genres"]) > 0:
             program["categories"] = []
             for genre in detailEpg["genres"]:
                 program["categories"].append(genre)
@@ -350,7 +359,7 @@ class AminoEPGGrabber(object):
         # Aspect ratio
         if detailEpg.has_key("aspectratio") and len(detailEpg["aspectratio"]) > 0:
             program["aspect"] = detailEpg["aspectratio"]
-        
+            
         # TODO: NICAM ratings (nicamParentalRating and nicamWarning)
                 
     def _addProgramToXML(self, channel, program, xmltag):
