@@ -1,25 +1,16 @@
-#/usr/bin/env python
+#!/usr/bin/env python
 
 """
 A XMLTV compatible EPG grabber for the Amino EPG.
 
-Supported TV networks:
-OnsNetEindhoven
-OnsBrabantNet
+The grabber should function for any provider that supplies IPTV from Glashart Media.
 """
 
-# READ ME:
-# To change the setup of the grabber, please edit the 'main'
-# function at the bottom of the file.
-
-#Stuff that still needs to be added:
-#* Support interface selection
-#* Add exception handling so we can operate without pytz if not present
-#* Read configuration file
-#* Support only processing channels specified in configuration
+# Set program version
+VERSION = "v0.5"
 
 from datetime import datetime, date, timedelta
-from xml.dom.minidom import Document
+from lxml import etree
 import pytz
 import httplib
 import socket
@@ -28,8 +19,9 @@ import gzip
 import json
 import cPickle
 import os
-import re
 import time
+import inspect
+import sys
 
 #===============================================================================
 # The internal data struture used in the AminoEPGGrabber to
@@ -48,6 +40,8 @@ import time
 #                categories []
 #===============================================================================
 
+GRABBERDIR = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+
 class AminoEPGGrabber(object):
     """
     Class AminoEPGGrabber implements the grabbing and processing
@@ -59,13 +53,17 @@ class AminoEPGGrabber(object):
         self.epgServer = "w1.zt6.nl"
         self.maxDays = 7
         self.details = True
+        self.downloadlogo = False
+        self.logoStore = None
         self.xmltvFile = "aminoepg.xml"
         self.databaseFile = "aminograbber.pkl"
+        self.channelDict = {}
         
         self._timezone = pytz.timezone("Europe/Amsterdam")
         self._epgdata = dict()
         self._xmltv = None
         self._epgConnection = None
+        self._foundLogos = dict()
         
     #===============================================================================
     # Getters and setters
@@ -83,16 +81,102 @@ class AminoEPGGrabber(object):
     #===============================================================================
     # Public functions
     #===============================================================================
+    def loadConfig(self, configFile):
+        """Load the configuration from the given config file"""
+        
+        try:
+            configTree = etree.parse(configFile)
+            config = configTree.getroot()
+            
+            if config.tag != "AminoEpgConfig":
+                print >> sys.stderr, "The config.xml file does not appear to be a valid AminoEPGGrabber configuration document."
+                sys.exit(1)
+                
+            # Try to read each config tag
+            server = config.find("server")
+            if server != None:
+                value = server.text.strip()
+                if value != "":
+                    self.epgServer = value
+                
+            maxdays = config.find("maxdays")
+            if maxdays != None:
+                try:
+                    value = int(maxdays.text)
+                    if value < 7: # Make sure only value < 7 are set (7 is default)
+                        self.maxDays = value
+                except ValueError:
+                    pass # Invalid value, ignore
+                
+            grabdetails = config.find("grabdetails")
+            if grabdetails != None:
+                value = grabdetails.text.lower()
+                if value == "false": # True is default, so override to false only
+                    self.details = False
+                    
+            downloadlogo = config.find("downloadlogo")
+            if downloadlogo != None:
+                value = downloadlogo.text.lower()
+                if value == "true": # False is default, so override to false only
+                    self.downloadlogo = True
+                    
+                    if downloadlogo.attrib.has_key("location"):
+                        location = downloadlogo.attrib["location"].strip()
+                        if location != "":
+                            self.logoStore = location
+                            
+            xmltvfile = config.find("xmltvfile")
+            if xmltvfile != None:
+                value = xmltvfile.text.strip()
+                if value != "":
+                    self.xmltvFile = value
+                    
+            databasefile = config.find("databasefile")
+            if databasefile != None:
+                value = databasefile.text.strip()
+                if value != "":
+                    self.databaseFile = value
+                    
+            channellist = config.find("channellist")
+            if channellist != None:
+                # Channel list found, parse all entries
+                channelDict = {}
+                for channel in channellist.findall("channel"):
+                    # Skip channels that are missing an 'id'
+                    if not channel.attrib.has_key("id"):
+                        continue
+                    
+                    # Add channel to channelDict (overwriting existing entry0
+                    channelDict[channel.attrib["id"].strip()] = channel.text.strip()
+                
+                # Replace default channel dict with loaded dict
+                self.channelDict = channelDict
+            
+        except etree.XMLSyntaxError as ex:
+            print >> sys.stderr, "Error parsing config.xml file: %s" % ex
+            sys.exit(1) # Quit with error code
+        except EnvironmentError as ex:
+            print >> sys.stderr, "Error opening config.xml file: %s" % ex
+            sys.exit(1) # Quit with error code
+    
+    
     def loadDatabase(self):
         """
         This function will load a database file into memory.
         It will overwrite the current in-memory data
         """
         # Only load if file exists
-        if os.path.isfile(self.databaseFile):
-            dbFile = open(self.databaseFile, "r")
+        databaseFile = os.path.join(GRABBERDIR, self.databaseFile)
+        if os.path.isfile(databaseFile):
+            dbFile = open(databaseFile, "r")
             self._epgdata = cPickle.load(dbFile)
             dbFile.close()
+            
+        # Remove channels that are not in the channel list
+        if len(self.channelDict) > 0:
+            for channel in self._epgdata.keys():
+                if not self.channelDict.has_key(channel):
+                    del self._epgdata[channel]
         
         # Determine current date
         today = date.today()
@@ -122,7 +206,8 @@ class AminoEPGGrabber(object):
                     del programs[programId]
         
         # Write dictionary to disk
-        dbFile = open(self.databaseFile, "w")
+        databaseFile = os.path.join(GRABBERDIR, self.databaseFile)
+        dbFile = open(databaseFile, "w")
         cPickle.dump(self._epgdata, dbFile)
         dbFile.close()
         
@@ -131,6 +216,17 @@ class AminoEPGGrabber(object):
         This function will grab the EPG data from the EPG server.
         If an existing database file was loaded, that data will be updated.
         """
+        # Report settings to user
+        print "Grabbing EPG using the following settings:"
+        print "Server to download from: %s" % self.epgServer
+        print "Number days of to grab : %s" % self.maxDays
+        print "Detailed program info  : %s" % ("Yes" if self.details else "No")
+        print "Download channel logo  : %s" % ("Yes" if self.downloadlogo else "No")
+        print "Writing XMLTV file to  : %s" % self.xmltvFile
+        print "Using database file    : %s" % self.databaseFile
+        print "Grabbing EPG for %d channels." % len(self.channelDict)
+        print ""
+        
         # Grab EPG data for all days
         for grabDay in range(self.maxDays):
             for dayPart in range(0, 8):
@@ -150,6 +246,7 @@ class AminoEPGGrabber(object):
                         self._epgConnection.request("GET", requestUrl)
                         response = self._epgConnection.getresponse()
                         epgData = response.read()
+                        response.close()
                         
                         if response.status != 200:
                             print "HTTP Error %s (%s). Failed on fileid %s." % (response.status,
@@ -193,45 +290,41 @@ class AminoEPGGrabber(object):
         This function will write the current in-memory EPG data to an XMLTV file.
         NOTE: Programs not found in the downloaded EPG will not be saved!
         """
-        # Set up XML tree
-        self._xmltv = Document() # create new XML document   
-        
-        # Create main <TV> tag
-        tvTag = self._xmltv.createElement("tv")
-        tvTag.setAttribute("source-info-url", self.epgServer)
-        tvTag.setAttribute("source-info-name",
-                           "Local amino EPG server")
-        tvTag.setAttribute("generator-info-name",
-                           "AminoEPGGrabber v0.0.1 (C) 2011 Jeroen Bogers")
-        tvTag.setAttribute("generator-info-url",
-                           "http://gathering.tweakers.net")
-        self._xmltv.appendChild(tvTag)
+        # Set up XML tree and create main <TV> tag
+        self._xmltv = etree.Element("tv",
+                                    attrib = {"source-info-url"     : self.epgServer,
+                                              "source-info-name"    : "Local amino EPG server",
+                                              "generator-info-name" : "AminoEPGGrabber %s (C) 2012 Jeroen Bogers" % VERSION,
+                                              "generator-info-url"  : "http://gathering.tweakers.net"}
+                                    )
         
         # Add channels to XML
         for channel in sorted(self._epgdata.keys()):
-            channelTag = self._xmltv.createElement("channel")
-            channelTag.setAttribute("id", channel)
-            channelDisplayNameTag = self._xmltv.createElement("display-name")
-            channelDisplayNameTag.setAttribute("lang", "nl")
-            channelDisplayNameTagText = self._xmltv.createTextNode(channel)
-            channelDisplayNameTag.appendChild(channelDisplayNameTagText)
-            channelTag.appendChild(channelDisplayNameTag)
-            tvTag.appendChild(channelTag)
+            channelTag = etree.Element("channel", id = channel)
+            channelDisplayNameTag = etree.Element("display-name", lang = "nl")
+            if self.channelDict.has_key(channel):
+                channelDisplayNameTag.text = self.channelDict[channel]
+            else:
+                channelDisplayNameTag.text = channel
+            channelTag.append(channelDisplayNameTag)
+            
+            # Add icon link, if available
+            if self._foundLogos.has_key(channel):
+                logoLink = "file://%s" % self._foundLogos[channel]
+                channelIconTag = etree.Element("icon", src = logoLink)
+                channelTag.append(channelIconTag)
+                
+            self._xmltv.append(channelTag)
             
         # Add programs to XML
         for channel, programs in sorted(self._epgdata.items()):
             for _, program in sorted(programs.items()):
-                self._addProgramToXML(channel, program, tvTag)
-        
-        # Generate XML string, fixing it with a regex (toprettyxml has a formatting bug)
-        # Set up regular expressions to fix XML string
-        xml_reformat = re.compile('>\n\s+([^<>\s].*?)\n\s+</', re.DOTALL)
-        rawXml = self._xmltv.toprettyxml(indent="  ", encoding="UTF-8")
-        prettyXml = xml_reformat.sub('>\g<1></', rawXml)
-    
+                self._xmltv.append(self._getProgramAsElement(channel, program))
+                
         # Write XMLTV file to disk
-        outFile = open(self.xmltvFile, "w")
-        outFile.write(prettyXml)
+        xmltvFile = os.path.join(GRABBERDIR, self.xmltvFile)
+        outFile = open(xmltvFile, "w")
+        outFile.write(etree.tostring(self._xmltv, pretty_print = True, xml_declaration = True, encoding='UTF-8'))
         outFile.close()
         
     #===============================================================================
@@ -244,9 +337,17 @@ class AminoEPGGrabber(object):
         the in memory data, the details are retrieved.
         """
         for channel, grabbedPrograms in basicEpg.iteritems():
+            # Ignore channels not in the channel list (if given)
+            if len(self.channelDict) > 0 and not self.channelDict.has_key(channel):
+                continue
+            
             # Check if data for channel is loaded yet
             if not self._epgdata.has_key(channel):
                 self._epgdata[channel] = dict()
+                
+            # Check if channel icon needs to be downloaded
+            if self.downloadlogo:
+                self._getLogo(channel)
             
             # Store all program data
             for grabbedProgram in grabbedPrograms:
@@ -296,6 +397,8 @@ class AminoEPGGrabber(object):
             self._epgConnection.request("GET", detailUrl)
             response = self._epgConnection.getresponse()
             if response.status != 200:
+                response.read() # Force response buffer to be emptied
+                response.close()
                 return # No data can be downloaded, return
             
         except (socket.error, httplib.CannotSendRequest, httplib.BadStatusLine):
@@ -311,6 +414,8 @@ class AminoEPGGrabber(object):
                 self._epgConnection.request("GET", detailUrl)
                 response = self._epgConnection.getresponse()
                 if response.status != 200:
+                    response.read() # Force response buffer to be emptied
+                    response.close()
                     return # No data can be downloaded, return
                 
             except (socket.error, httplib.CannotSendRequest, httplib.BadStatusLine):
@@ -318,6 +423,7 @@ class AminoEPGGrabber(object):
                 return
         
         detailEpg = json.load(response, "UTF-8")
+        response.close()
         
         # Episode title
         if detailEpg.has_key("episodeTitle") and len(detailEpg["episodeTitle"]) > 0:
@@ -362,44 +468,38 @@ class AminoEPGGrabber(object):
             
         # TODO: NICAM ratings (nicamParentalRating and nicamWarning)
                 
-    def _addProgramToXML(self, channel, program, xmltag):
-        """Add program to XML tree under the specified tag"""
+    def _getProgramAsElement(self, channel, program):
+        """Returns the specified program as an LXML 'Element'"""
+        
         # Construct programme tag
-        programmeTag = self._xmltv.createElement("programme")
-        programmeTag.setAttribute("start", program["starttime"])
-        programmeTag.setAttribute("stop", program["stoptime"])
-        programmeTag.setAttribute("channel", channel)
-        xmltag.appendChild(programmeTag)
+        programmeTag = etree.Element("programme",
+                                     start      = program["starttime"],
+                                     stop       = program["stoptime"],
+                                     channel    = channel)
         
         # Construct title tag
-        titleTag = self._xmltv.createElement("title")
-        titleTag.setAttribute("lang", "nl")
-        titleTagText = self._xmltv.createTextNode(program["title"])
-        titleTag.appendChild(titleTagText)
-        programmeTag.appendChild(titleTag)
+        titleTag = etree.Element("title", lang = "nl")
+        titleTag.text = program["title"]
+        programmeTag.append(titleTag)
         
         # Subtitle
         if program.has_key("sub-title"):
             # Add sub-title tag
-            subtitleTag = self._xmltv.createElement("sub-title")
-            subtitleTag.setAttribute("lang", "nl")
-            subtitleTagText = self._xmltv.createTextNode(program["sub-title"])
-            subtitleTag.appendChild(subtitleTagText)
-            programmeTag.appendChild(subtitleTag)
+            subtitleTag = etree.Element("sub-title", lang = "nl")
+            subtitleTag.text = program["sub-title"]
+            programmeTag.append(subtitleTag)
             
         # Description
         if program.has_key("desc"):
             # Add desc tag
-            descriptionTag = self._xmltv.createElement("desc")
-            descriptionTag.setAttribute("lang", "nl")
-            descriptionTagText = self._xmltv.createTextNode(program["desc"])
-            descriptionTag.appendChild(descriptionTagText)
-            programmeTag.appendChild(descriptionTag)
+            descriptionTag = etree.Element("desc", lang = "nl")
+            descriptionTag.text = program["desc"]
+            programmeTag.append(descriptionTag)
             
         # Credits (directors, actors, etc)
         if program.has_key("credits") and len(program["credits"]) > 0:
             # Add credits tag
-            creditsTag = self._xmltv.createElement("credits")
+            creditsTag = etree.Element("credits")
             
             # Add tags for each type of credits (in order, so XMLTV stays happy)
             #creditTypes = ["director", "actor", "writer", "adapter",
@@ -411,35 +511,108 @@ class AminoEPGGrabber(object):
             for creditType in creditTypes:
                 if creditsDict.has_key(creditType):
                     for person in creditsDict[creditType]:
-                        personTag = self._xmltv.createElement(creditType)
-                        personTagText = self._xmltv.createTextNode(person)
-                        personTag.appendChild(personTagText)
-                        creditsTag.appendChild(personTag)
+                        personTag = etree.Element(creditType)
+                        personTag.text = person
+                        creditsTag.append(personTag)
                     
-            programmeTag.appendChild(creditsTag)
+            programmeTag.append(creditsTag)
             
         # Categories
         if program.has_key("categories"):
             # Add multiple category tags
             for category in program["categories"]:
-                categoryTag = self._xmltv.createElement("category")
-                categoryTag.setAttribute("lang", "nl")
-                categoryTagText = self._xmltv.createTextNode(category)
-                categoryTag.appendChild(categoryTagText)
-                programmeTag.appendChild(categoryTag)
+                categoryTag = etree.Element("category", lang = "nl")
+                categoryTag.text = category
+                programmeTag.append(categoryTag)
                 
         # Aspect ratio
         if program.has_key("aspect"):
-            # Add aspect tag
-            aspectTag = self._xmltv.createElement("aspect")
-            aspectTagText = self._xmltv.createTextNode(program["aspect"])
-            aspectTag.appendChild(aspectTagText)
-            programmeTag.appendChild(aspectTag)
+            # Add video tag, containing aspect tag
+            videoTag = etree.Element("video")
+            aspectTag = etree.Element("aspect")
+            aspectTag.text = program["aspect"]
+            videoTag.append(aspectTag)
+            programmeTag.append(videoTag)
+            
+        return programmeTag
     
     def _convertTimestamp(self, timestamp):
         """Convert downloaded timestamp to XMLTV compatible time string"""
         startTime = datetime.fromtimestamp(timestamp, self._timezone)
         return startTime.strftime("%Y%m%d%H%M%S %z")
+    
+    def _getLogo(self, channel):
+        """Check if there is a logo for the given channel, and (try) to download it if needed"""
+        
+        # Check that log has not been verified already
+        if self._foundLogos.has_key(channel):
+            return
+        
+        # Prepare paths needed for the logo
+        if self.logoStore is not None:
+            localLogoDir = os.path.join(GRABBERDIR, self.logoStore)
+        else:
+            localLogoDir = os.path.join(GRABBERDIR, "logos")
+        
+        logoName = "%s.png" % channel
+        localLogo = os.path.join(localLogoDir, logoName)
+        remoteLogo = "/tvmenu/images/channels/%s.png" % channel
+        
+        # Check that logo does not already exist
+        if os.path.isfile(localLogo):
+            # Found logo, store and return
+            self._foundLogos[channel] = localLogo
+            return
+        
+        # Logo not found, try to download it
+        try:
+            self._epgConnection.request("GET", remoteLogo)
+            response = self._epgConnection.getresponse()
+            if response.status != 200:
+                # Logo cannot be found, set to ignore it
+                self._foundLogos[channel] = None
+                response.read() # Force response buffer to be emptied
+                response.close()
+                return
+            
+        except (socket.error, httplib.CannotSendRequest, httplib.BadStatusLine):
+            # Error in connection. Close existing connection.
+            self._epgConnection.close()
+            
+            # Wait for network to recover
+            time.sleep(10)
+            
+            # Reconnect to server and retry
+            try:
+                self._epgConnection = httplib.HTTPConnection(self.epgServer)
+                self._epgConnection.request("GET", remoteLogo)
+                response = self._epgConnection.getresponse()
+                if response.status != 200:
+                    # Logo cannot be found, set to ignore it
+                    self._foundLogos[channel] = None
+                    response.read() # Force response buffer to be emptied
+                    response.close()
+                    return
+                
+            except (socket.error, httplib.CannotSendRequest, httplib.BadStatusLine):
+                # Connection remains broken, return (error will be handled in grabEpg function)
+                self._foundLogos[channel] = None
+                return
+        
+        # Logo downloaded, store to disk
+        try:
+            if not os.path.isdir(localLogoDir):
+                os.makedirs(localLogoDir)
+            
+            with open(localLogo, "wb") as logoFile:
+                logoFile.write(response.read())
+            
+            response.close()
+            self._foundLogos[channel] = localLogo
+        
+        except EnvironmentError:
+            # Could not store logo, set to ignore it
+            self._foundLogos[channel] = None
 
 
 def main():
@@ -447,34 +620,15 @@ def main():
     Main entry point of program.
     This function will read the configuration file and start the grabber.
     """
-    print "AminoEPGGrabber started on " + str(datetime.now())
+    print "AminoEPGGrabber %s started on %s." % (VERSION, datetime.now())
     
     # Create grabber class
     grabber = AminoEPGGrabber()
     
-    # Override defaults
-    # Override the EPG server location if you are in a different
-    # network, or when you need to use a direct IP address.
-    grabber.epgServer = "w1.zt6.nl"
-    #grabber.epgServer = "192.168.0.102:8080"
-    
-    # By default the grabber will grab 7 days, which is the usual
-    # maximum of days that are offered, so make sure you only
-    # decrease the number of days!
-    #grabber.maxDays = 7
-    
-    # By default the grabber will grab details about a program, like
-    # the episode title and description. If you set the variable
-    # to 'False' only program title and broadcast times are retrieved.
-    # This retrieval is a lot faster.
-    # NOTE: If you change this value, delete the database file. If you
-    # don't, only newly grabbed programs will be affected.
-    #grabber.details = True
-    
-    # You can specify different filenames and locations for the
-    # generated EPG file and the database, if so desired.
-    #grabber.xmltvFile = "aminoepg.xml"
-    #grabber.databaseFile = "aminograbber.pkl"
+    # Try to load config file, if it exists
+    configFile = os.path.join(GRABBERDIR, "config.xml")
+    if os.path.isfile(configFile):
+        grabber.loadConfig(configFile)
     
     # Load saved database
     grabber.loadDatabase()
@@ -488,8 +642,8 @@ def main():
     # Write XMLTV file
     grabber.writeXmltv()
     
-    print "AminoEPGGrabber finished on " + str(datetime.now())
+    print "AminoEPGGrabber finished on %s." % datetime.now()
 
 if __name__ == "__main__":
     main()
-    
+

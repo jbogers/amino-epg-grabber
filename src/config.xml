@@ -1,0 +1,287 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<AminoEpgConfig>
+  
+  <!--
+  Override the EPG server location if you are in a different
+  network, or when you need to use a direct IP address.
+  -->
+  <!-- <server>w1.zt6.nl</server> -->
+  
+  <!--
+  By default the grabber will grab 7 days, which is the usual
+  maximum of days that are offered.
+  For preformance increases, you can enter a smaller number.
+  -->
+  <!-- <maxdays>7</maxdays> -->
+  
+  <!--
+  By default the grabber will grab details about a program, like
+  the episode title and description. If you set the setting
+  to 'FALSE' only program title and broadcast times are retrieved.
+  This retrieval is a lot faster.
+  NOTE: If you change this value, delete the database file. If you
+  don't, only newly grabbed programs will be affected.
+  -->
+  <!-- <grabdetails>TRUE</grabdetails> -->
+  
+  <!--
+  By default logo's for TV channels are not downloaded.
+  If you would like the grabber to download the logos and add them
+  the the XMLTV file, set this setting to 'TRUE'.
+  
+  You can specify a storage location for the icons with the 'location' attribute:
+    <downloadlogo location="MY_STORAGE_PATH">FALSE</downloadlogo>
+  If location is not given, the logo's will be placed in the 'logos' subdirectory.
+  
+  Once a logo is downloaded, it will NOT be refreshed. To refresh the logo, delete the
+  existing local copy.
+  -->
+  <!-- <downloadlogo>FALSE</downloadlogo> -->
+  
+  <!--
+  You can specify different filenames and locations for the
+  generated EPG file and the database, if so desired.
+  -->
+  <!-- <xmltvfile>aminoepg.xml</xmltvfile> -->
+  <!-- <databasefile>aminograbber.pkl</databasefile> -->
+
+  <!--
+  A list of all the channels that you would like the EPG grabber to download for you.
+  If the list is omitted or empty, all channels will be grabbed with their default ID's and names.
+  
+  The syntax of a channel is as follows:
+    <channel id="[EPGID]">[DISPLAYNAME]</channel>
+  Where:
+    [EPGID] is the internal EPG channel name (you should not change these)
+    [DISPLAYNAME] the name used as display name in the generated XMLTV file
+  -->
+  <channellist>
+  
+    <!-- TV channels -->
+    <channel id="ned1">Nederland 1</channel>
+    <channel id="ned2">Nederland 2</channel>
+    <channel id="ned3">Nederland 3</channel>
+    <channel id="rtl4">RTL 4</channel>
+    <channel id="rtl5">RTL 5</channel>
+    <channel id="sbs6">SBS 6</channel>
+    <channel id="rtl7">RTL 7</channel>
+    <channel id="veronica">Veronica/Disney XD</channel>
+    <channel id="net5">Net5</channel>
+    <channel id="rtl8">RTL 8</channel>
+    
+    <channel id="een">één</channel>
+    <channel id="canvas">Canvas</channel>
+    <channel id="ketnet">Ketnet/OP12</channel>
+    
+    <channel id="ghminfo">Infokanaal</channel>
+    <channel id="trailers">MovieMax Trailers</channel> 
+    
+    <channel id="discovery">Discovery Channel</channel>
+    <channel id="discoveryworld">Discovery World</channel>
+    <channel id="discoveryscience">Discovery Science</channel>
+    <channel id="discoverytravelandliving">ID: Investigation Discovery</channel>
+    
+    <channel id="animalplanet">Animal Planet/TLC</channel>
+    <channel id="animalplanethd">Animal Planet HD</channel>
+    
+    <channel id="ngc">National Geographic</channel>
+    <channel id="natgeowild">Nat Geo Wild</channel>
+    
+    <channel id="hollanddoc">Holland Doc 24</channel>
+    
+    <channel id="bbc1">BBC 1</channel>
+    <channel id="bbc2">BBC 2</channel>
+    <channel id="bbc3">BBC 3</channel>
+    <channel id="bbc4">BBC 4</channel>
+    <channel id="bbcprime">BBC Entertainment</channel>
+    <channel id="bbchd">BBC HD</channel>
+    
+    <channel id="eurosport">Eurosport</channel>
+    <channel id="eurosport2">Eurosport 2</channel>
+    <channel id="espnamerica">ESPN America</channel>
+    <channel id="espnclassic">ESPN Classic</channel>
+    <channel id="extremesports">Extreme Sports Channel</channel>
+    
+    <channel id="carchannel">Car Channel</channel>
+    <channel id="motorstv">Motors TV</channel>
+    
+    <channel id="ecv1">Eredivisie Live 1</channel>
+    <channel id="ecv2">Eredivisie Live 2</channel>
+    <channel id="ecv3">Eredivisie Live 3</channel>
+    <channel id="ecv4">Eredivisie Live 4</channel>
+    
+    <channel id="nickelodeon">Nickelodeon</channel>
+    <channel id="nickjr">Nick Junior</channel>
+    <channel id="nicktoons">Nick Toons</channel>
+    
+    <channel id="comedycentral">Kindernet/Comedy Central</channel>
+    <channel id="comedycentralfamily">Comedy Central Family</channel>
+    
+    <channel id="cartoon">Cartoon Network</channel>
+    <channel id="pebbletv">Pebble TV</channel>
+    <channel id="jimjam">JimJam</channel>
+    <channel id="bebetv">Duck TV</channel>
+    <channel id="zappelin24">Z@ppelin/Familie 24</channel>
+    <channel id="babytv">Baby TV</channel>
+    <channel id="cbbc">CBBC</channel>
+    <channel id="cbeebies">CBeebies</channel>
+    
+    <channel id="mtv">MTV</channel>
+    <channel id="mtvbrandnew">MTV Brand New</channel>
+    <channel id="slamtv">Slam!TV</channel>
+    
+    <channel id="sterrennl">Sterren 24</channel>
+    <channel id="tvoranje">TV Oranje</channel>
+    <channel id="schlagertv">SchlagerTV</channel>
+    <channel id="tv192">192TV</channel>
+    <channel id="vh1">VH1</channel>
+    
+    <channel id="cnn">CNN</channel>
+    <channel id="bbcworld">BBC World News</channel>
+    <channel id="euronews">Euronews</channel>
+    <channel id="cnbceurope">CNBC Europe</channel>
+    <channel id="nhkworld">NHK World TV</channel>
+    
+    <channel id="journaal24">Journaal 24</channel>
+    <channel id="politiek24">Politiek 24</channel>
+    
+    <channel id="rtllounge">RTL Lounge</channel>
+    <channel id="hilversumbest">Best 24</channel>
+    <channel id="tv101">101 TV</channel>
+    <channel id="humortv">Humor TV 24</channel>
+    
+    <channel id="fashiontv">Fashion TV</channel>
+    <channel id="fashiontvhd">Fashion TV HD</channel>
+    <channel id="luxetvhd">Luxe TV HD</channel>
+    <channel id="zonereality">Zone Reality</channel>
+    <channel id="zoneclub">Fine Living Network</channel>
+    <channel id="foodnetwork">Food Network</channel>
+    <channel id="tv24kitchen">24Kitchen</channel>
+    
+    <channel id="travelchannel">Travel Channel</channel>
+    <channel id="travelchannelhd">Travel Channel HD</channel>
+    
+    <channel id="myzenhd">myZen.tv HD</channel>
+    
+    <channel id="tcm">TCM</channel>
+    <channel id="mgmmovie">MGM Movie Channel</channel>
+    
+    <channel id="syfy">Syfy Universal</channel>
+    <channel id="thirteenth">13th Street</channel>
+    <channel id="rtlcrime">RTL Crime</channel>
+    
+    <channel id="bravanl">BravaNL</channel>
+    <channel id="bravatv">Brava HDTV</channel>
+    <channel id="brava3d">Brava 3D</channel>
+    <channel id="mezzo">Mezzo</channel>
+    <channel id="mezzolivehd">Mezzo Live HD</channel>
+    <channel id="arte">Arte</channel>
+    
+    <channel id="nostalgienet">NostalgieNet</channel>
+    <channel id="family7">Family-7</channel>
+    <channel id="spirit24">Spirit 24</channel>
+    <channel id="cultura">Cultura 24</channel>
+    
+    <channel id="ard">ARD</channel>
+    <channel id="zdf">ZDF</channel>
+    <channel id="wdr">WDR</channel>
+    <channel id="ndrtv">NDR Fernsehen</channel>
+    <channel id="prosieben">ProSieben</channel>
+    <channel id="sat1">Sat 1</channel>
+    <channel id="rtltelevision">RTL Television</channel>
+    
+    <channel id="tv5">TV 5 Monde</channel>
+    
+    <channel id="tve">TVE</channel>
+    <channel id="raiuno">Rai Uno</channel>
+    
+    <channel id="showtv">Show TV</channel>
+    <channel id="cnnturk">CNN Türk</channel>
+    
+    <channel id="aljaz">Al Jazeera</channel>
+    <channel id="canalalgerie">Canal Algerie</channel>
+    
+    <channel id="starplus">Star Plus</channel>
+    <channel id="stargold">Star Gold</channel>
+    <channel id="starone">Star One</channel>
+    <channel id="starnews">Star News</channel>
+    
+    <channel id="rtvnh">TV Noord-Holland</channel>
+    <channel id="at5">AT5</channel>
+    <channel id="tvwest">TV West</channel>
+    <channel id="omropfryslan">Omrop Fryslân Televisie</channel>
+    <channel id="rtvnoord">TV Noord</channel>
+    <channel id="tvdrenthe">TV Drenthe</channel>
+    <channel id="tvoost">TV Oost</channel>
+    <channel id="tvflevoland">Omroep Flevoland TV</channel>
+    <channel id="tvutrecht">RTV Utrecht</channel>
+    <channel id="tvgelderland">TV Gelderland</channel>
+    <channel id="tvrijnmond">TV Rijnmond</channel>
+    <channel id="omroepzeelandtv">Omroep Zeeland TV</channel>
+    <channel id="omroepbrabanttv">Omroep Brabant TV</channel>
+    <channel id="l1tv">L1 TV</channel>
+    
+    <channel id="playboy">Playboy TV</channel>
+    <channel id="privatespice">Private Spice</channel>
+    <channel id="dorceltv">Dorcel TV</channel>
+    <channel id="meidenvanholland">Meiden van Holland</channel>
+    
+    <channel id="lontv">LON TV</channel>
+    <channel id="ustadtv">Ustad</channel>
+    
+    <!-- Obsolete TV channels that are not broadcasted anymore -->
+    <!-- <channel id="discoveryhd">Discovery HD Showcase</channel> -->
+    <!-- <channel id="tmfnl">TMF NL</channel> -->
+    
+    
+    <!-- Radio channels -->
+    <!--
+    <channel id="radio1">Radio 1</channel>
+    <channel id="radio2">Radio 2</channel>
+    <channel id="radio3">Radio 3FM</channel>
+    <channel id="radio4">Radio 4</channel>
+    <channel id="radio5">Radio 5</channel>
+    <channel id="radio6">Radio 6</channel>
+    <channel id="skyradio">Sky Radio</channel>
+    <channel id="radio538">Radio 538</channel>
+    <channel id="radio_veronica">Radio Veronica</channel>
+    <channel id="bnrnieuwsradio">BNR Nieuwsradio</channel>
+    <channel id="radio10gold">Radio 10 Gold</channel>
+    <channel id="funx">Fun X</channel>
+    <channel id="slamfm">Slam! FM</channel>
+    <channel id="qmusic">Q-Music</channel>
+    <channel id="arrowclassicrock">Arrow Classic Rock</channel>
+    <channel id="classicfm">Classic FM</channel>
+    
+    <channel id="vrtradio1">VRT Radio 1</channel>
+    <channel id="vrtradio2">VRT Radio 2</channel>
+    <channel id="vrtklara">VRT Klara</channel>
+    
+    <channel id="bbcradio1">BBC Radio 1</channel>
+    <channel id="bbcradio2">BBC Radio 2</channel>
+    <channel id="bbcradio3">BBC Radio 3</channel>
+    <channel id="bbcradio4">BBC Radio 4</channel>
+    
+    <channel id="wdr3">WDR 3</channel>
+    <channel id="wdr4">WDR 4</channel>
+    
+    <channel id="radiowest">Radio West</channel>
+    <channel id="radionh">Radio Noord-Holland</channel>
+    <channel id="omropfryslanradio">Omrop Fryslân Radio</channel>
+    <channel id="radionoord">Radio Noord</channel>
+    <channel id="radiodrenthe">Radio Drenthe</channel>
+    <channel id="radioflevoland">Omroep Flevoland</channel>
+    <channel id="radiooost">Radio Oost</channel>
+    <channel id="radioutrecht">Radio M Utrecht</channel>
+    <channel id="radiogelderland">Radio Gelderland</channel>
+    <channel id="radiorijnmond">Radio Rijnmond</channel>
+    <channel id="omroepzeeland">Omroep Zeeland</channel>
+    <channel id="omroepbrabant">Omroep Brabant</channel>
+    <channel id="l1radio">L1 Radio</channel>
+    -->
+        
+    <!-- Obsolete radio channels that are not broadcasted anymore -->
+    <!-- <channel id="kinkfm">Kink FM</channel> -->
+    
+  </channellist>
+</AminoEpgConfig>
